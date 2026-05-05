@@ -79,10 +79,8 @@ async function sendCallbackToHub(callbackPath, responseBody, originalHeaders) {
   try {
     const hubCallbackUrl = callbackPath;
 
-    // Extract path to detect service type
     const path = hubCallbackUrl.toLowerCase();
 
-    // Dynamic values from received callback headers
     const fspiopSource = originalHeaders['fspiop-source'] || 'switch';
     const fspiopDestination =
       originalHeaders['fspiop-destination'] || process.env.fspId;
@@ -91,16 +89,14 @@ async function sendCallbackToHub(callbackPath, responseBody, originalHeaders) {
     const dynamicDate = new Date().toUTCString();
     const traceId = crypto.randomUUID();
 
-    // Detect service type (ALS / Quotes / Transfers)
     let headers = {};
 
     if (path.includes('/parties')) {
-      // ðŸ”¹ ALS Headers
       headers = {
         'Content-Type':
           'application/vnd.interoperability.parties+json;version=2.0',
         Accept: 'application/vnd.interoperability.parties+json;version=2.0',
-        'FSPIOP-Source': process.env.fspId, // fspiopSource
+        'FSPIOP-Source': process.env.fspId,
         'FSPIOP-Destination': originalHeaders['fspiop-source'],
         Date: dynamicDate,
         'FSPIOP-HTTP-Method': 'PUT',
@@ -108,8 +104,7 @@ async function sendCallbackToHub(callbackPath, responseBody, originalHeaders) {
         traceparent: traceId,
       };
     } else if (path.includes('/quotes')) {
-      // ðŸ”¹ Quotes Headers
-      const quoteId = originalHeaders.quoteId || randomUUID(); // dynamic quote id fallback
+      const quoteId = originalHeaders.quoteId || randomUUID();
       headers = {
         'Content-Type':
           'application/vnd.interoperability.quotes+json;version=1.1',
@@ -120,20 +115,18 @@ async function sendCallbackToHub(callbackPath, responseBody, originalHeaders) {
         'FSPIOP-URI': `/quotes/${quoteId}`,
       };
     } else if (path.includes('/transfers')) {
-      // ðŸ”¹ Transfers Headers
       headers = {
         'Content-Type':
           'application/vnd.interoperability.transfers+json;version=1.0',
-        Accept: 'application/vnd.interoperability.transfers+json;version=1.0', // ADD THIS!
+        Accept: 'application/vnd.interoperability.transfers+json;version=1.0',
         'FSPIOP-Source': process.env.fspId, // FIX: YOU are the source
-        'FSPIOP-Destination': originalHeaders['fspiop-source'], // FIX: Original sender is destination
-        'FSPIOP-HTTP-Method': 'PUT', // ADD: Required!
-        'FSPIOP-URI': `/transfers/${transferId}`, // ADD: Required!
+        'FSPIOP-Destination': originalHeaders['fspiop-source'],
+        'FSPIOP-HTTP-Method': 'PUT',
+        'FSPIOP-URI': `/transfers/${transferId}`,
         Date: dynamicDate,
         traceparent: traceId,
       };
     } else {
-      // ðŸ”¹ Default Fallback Headers
       headers = {
         'Content-Type': 'application/json',
         Accept: 'application/json',
@@ -211,11 +204,11 @@ app.get('/api/parties', auth, async (req, res) => {
       per_page = 10,
     } = req.query;
 
-    // ── Pagination ────────────────────────────────────────────
+    //  Pagination
     const limit = Math.min(Math.max(parseInt(per_page) || 10, 1), 100);
     const offset = (Math.max(parseInt(page) || 1, 1) - 1) * limit;
 
-    // ── Build WHERE ───────────────────────────────────────────
+    // Build WHERE
     const conditions = [];
     const params = [];
 
@@ -254,7 +247,7 @@ app.get('/api/parties', auth, async (req, res) => {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    // ── Count ─────────────────────────────────────────────────
+    // Count
     const countResult = await queryDB(
       `SELECT COUNT(*) AS total FROM merchant ${where}`,
       params,
@@ -262,7 +255,7 @@ app.get('/api/parties', auth, async (req, res) => {
     const total = countResult[0]?.total || 0;
     const total_pages = Math.ceil(total / limit);
 
-    // ── Data ──────────────────────────────────────────────────
+    // Data
     const data = await queryDB(
       `SELECT
          id, display_name, first_name, middle_name, last_name,
@@ -780,7 +773,7 @@ app.delete('/api/parties/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // ── 1. Find merchant ──────────────────────────────────────
+    // 1. Find merchant
     const merchant = await queryDB('SELECT * FROM merchant WHERE id = ?', [id]);
 
     if (merchant.length === 0) {
@@ -789,7 +782,7 @@ app.delete('/api/parties/:id', auth, async (req, res) => {
 
     const { id_type, id_value, display_name } = merchant[0];
 
-    // ── 2. De-register from ALS ───────────────────────────────
+    // 2. De-register from ALS
     let alsStatus = 'skipped';
     try {
       const alsUrl = `${process.env.ALS_SERVICE}/participants/${id_type}/${id_value}`;
@@ -812,20 +805,16 @@ app.delete('/api/parties/:id', auth, async (req, res) => {
       if (status >= 200 && status < 300) {
         console.log(`[ALS] De-registered ${id_type}/${id_value}`);
       } else {
-        // Non-fatal — log and continue with DB cleanup
-        console.warn(
-          `[ALS] De-registration returned ${status} for ${id_type}/${id_value} — continuing with DB delete`,
-        );
+        // skip.
       }
     } catch (alsErr) {
-      // Network error hitting ALS — still clean up DB
       alsStatus = `error: ${alsErr.message}`;
       console.warn(
         `[ALS] De-registration failed for ${id_type}/${id_value}: ${alsErr.message} — continuing with DB delete`,
       );
     }
 
-    // ── 3. Delete linked users ────────────────────────────────
+    // 3. Delete linked users
     const users = await queryDB('SELECT id FROM users WHERE merchant_id = ?', [
       id,
     ]);
@@ -835,18 +824,17 @@ app.delete('/api/parties/:id', auth, async (req, res) => {
       console.log(`[DB] Deleted ${users.length} user(s) for merchant ${id}`);
     }
 
-    // ── 4. Delete merchant ────────────────────────────────────
+    // 4. Delete merchant
     await queryDB('DELETE FROM merchant WHERE id = ?', [id]);
     console.log(`[DB] Deleted merchant ${id} (${display_name})`);
 
-    // ── 5. Response ───────────────────────────────────────────
+    // 5. Response
     return res.status(200).json({
       message: `Merchant "${display_name}" deleted successfully${users.length > 0 ? ` along with ${users.length} associated user(s)` : ''}`,
       als_status: alsStatus,
       users_deleted: users.length,
     });
   } catch (error) {
-    console.error('[DELETE /api/parties/:id]', error.message);
     res.status(500).json({ message: error.message });
   }
 });
@@ -1021,7 +1009,6 @@ async function send_S4_finalStatus(transfer_id, newStatus, extra = {}) {
       `UPDATE transactions SET ${fields.join(', ')} WHERE id = ?`,
       values,
     );
-    //console.log(`[SEND S4] ${transfer_id}  ${row.status} -> ${newStatus}`);
 
     //Balance Debit
     if (newStatus === 'COMMITTED') {
@@ -1048,9 +1035,8 @@ async function send_S4_finalStatus(transfer_id, newStatus, extra = {}) {
     console.error('[SEND S4] error:', err.message);
   }
 }
-/*
+
 async function recv_R1_createQuote(body, reqHeaders) {
-  // Duplicate guard
   const exists = await queryDB(
     `SELECT id FROM transactions
      WHERE quote_id = ? AND direction = 'INCOMING' LIMIT 1`,
@@ -1060,6 +1046,17 @@ async function recv_R1_createQuote(body, reqHeaders) {
     console.log(`[RECV R1] duplicate — skip  quote_id=${body?.quoteId}`);
     return;
   }
+
+  // Derive type from Hub's transactionType
+  const SCENARIO_MAP = {
+    TRANSFER: 'P2P',
+    PAYMENT: 'INSTANT',
+    DEPOSIT: 'INSTANT',
+    WITHDRAWAL: 'P2P',
+    REFUND: 'P2P',
+  };
+  const scenario = body?.transactionType?.scenario || 'TRANSFER';
+  const txnType = SCENARIO_MAP[scenario] || 'P2P';
 
   const payerName =
     [
@@ -1080,7 +1077,7 @@ async function recv_R1_createQuote(body, reqHeaders) {
        status, quote_at
      ) VALUES (
        UUID(), ?, ?,
-       'P2P', 'INCOMING',
+       ?, 'INCOMING',
        ?, ?,
        ?, ?, ?,
        ?, ?,
@@ -1090,9 +1087,8 @@ async function recv_R1_createQuote(body, reqHeaders) {
     [
       body?.quoteId || null,
       body?.transactionId || null,
-      // payer FSP = FSPIOP-Source (whoever sent the quote)
+      txnType,
       body?.payer?.partyIdInfo?.fspId || reqHeaders['fspiop-source'] || null,
-      // payee FSP = us
       body?.payee?.partyIdInfo?.fspId ||
         reqHeaders['fspiop-destination'] ||
         process.env.fspId ||
@@ -1103,72 +1099,6 @@ async function recv_R1_createQuote(body, reqHeaders) {
       body?.payee?.partyIdInfo?.partyIdType || null,
       body?.payee?.partyIdInfo?.partyIdentifier || null,
       body?.amount?.amount || 0,
-      body?.amount?.currency || process.env.currency || 'BDT',
-    ],
-  );
-  console.log(
-    `[RECV R1] INCOMING created  quote_id=${body?.quoteId}  status=QUOTE_REQUESTED`,
-  );
-}
-*/
-async function recv_R1_createQuote(body, reqHeaders) {
-  const exists = await queryDB(
-    `SELECT id FROM transactions
-     WHERE quote_id = ? AND direction = 'INCOMING' LIMIT 1`,
-    [body?.quoteId],
-  );
-  if (exists && exists.length > 0) {
-    console.log(`[RECV R1] duplicate — skip  quote_id=${body?.quoteId}`);
-    return;
-  }
-
-  // ── Derive type from Hub's transactionType ────────────────
-  const SCENARIO_MAP = {
-    TRANSFER:   'P2P',
-    PAYMENT:    'INSTANT',
-    DEPOSIT:    'INSTANT',
-    WITHDRAWAL: 'P2P',
-    REFUND:     'P2P',
-  };
-  const scenario = body?.transactionType?.scenario || 'TRANSFER';
-  const txnType  = SCENARIO_MAP[scenario] || 'P2P';  // ← dynamic
-  // ──────────────────────────────────────────────────────────
-
-  const payerName = [
-    body?.payer?.personalInfo?.complexName?.firstName,
-    body?.payer?.personalInfo?.complexName?.lastName,
-  ].filter(Boolean).join(' ') || null;
-
-  await queryDB(
-    `INSERT INTO transactions (
-       id, quote_id, transaction_id,
-       type, direction,
-       payer_fsp, payee_fsp,
-       payer_id_type, payer_id_value, payer_name,
-       payee_id_type, payee_id_value,
-       amount, currency,
-       status, quote_at
-     ) VALUES (
-       UUID(), ?, ?,
-       ?, 'INCOMING',
-       ?, ?,
-       ?, ?, ?,
-       ?, ?,
-       ?, ?,
-       'QUOTE_REQUESTED', NOW()
-     )`,
-    [
-      body?.quoteId       || null,
-      body?.transactionId || null,
-      txnType,                                                    // ← was hardcoded 'P2P'
-      body?.payer?.partyIdInfo?.fspId || reqHeaders['fspiop-source']      || null,
-      body?.payee?.partyIdInfo?.fspId || reqHeaders['fspiop-destination'] || process.env.fspId || null,
-      body?.payer?.partyIdInfo?.partyIdType    || null,
-      body?.payer?.partyIdInfo?.partyIdentifier|| null,
-      payerName,
-      body?.payee?.partyIdInfo?.partyIdType    || null,
-      body?.payee?.partyIdInfo?.partyIdentifier|| null,
-      body?.amount?.amount   || 0,
       body?.amount?.currency || process.env.currency || 'BDT',
     ],
   );
@@ -1223,7 +1153,7 @@ async function recv_R3_transferReceived(body, reqHeaders) {
     : [];
 
   if (byQuote && byQuote.length > 0) {
-    // ── Normal path: R1 row exists, link transferId ──────────
+    // Normal path: R1 row exists, link transferId
     await queryDB(
       `UPDATE transactions SET
          transfer_id = ?,
@@ -1237,13 +1167,13 @@ async function recv_R3_transferReceived(body, reqHeaders) {
       `[RECV R3] transfer linked  quote_id=${body.quoteId}  transfer_id=${transferId}  status=TRANSFER_SENT`,
     );
   } else {
-    // ── Edge case: Hub sends transfer without prior POST /quotes ──
+    // Edge case: Hub sends transfer without prior POST /quotes
     const already = await queryDB(
       `SELECT id FROM transactions
        WHERE transfer_id = ? AND direction = 'INCOMING' LIMIT 1`,
       [transferId],
     );
-    if (already && already.length > 0) return; // already tracked
+    if (already && already.length > 0) return;
 
     await queryDB(
       `INSERT INTO transactions (
@@ -1274,9 +1204,6 @@ async function recv_R3_transferReceived(body, reqHeaders) {
         body?.expiration ? new Date(body.expiration) : null,
       ],
     );
-    console.log(
-      `[RECV R3] INCOMING created from transfer (no prior quote)  transfer_id=${transferId}`,
-    );
   }
 }
 
@@ -1299,11 +1226,9 @@ async function recv_R4_finalStatus(transfer_id, newStatus, extra = {}) {
     const row = rows[0];
 
     if (row.status === newStatus) {
-      console.log(`[RECV R4] already ${newStatus} — skip`);
       return;
     }
     if (TERMINAL.includes(row.status)) {
-      console.log(`[RECV R4] already terminal (${row.status}) — skip`);
       return;
     }
 
@@ -1333,7 +1258,6 @@ async function recv_R4_finalStatus(transfer_id, newStatus, extra = {}) {
       `UPDATE transactions SET ${fields.join(', ')} WHERE id = ?`,
       values,
     );
-    // console.log(`[RECV R4] ${transfer_id}  ${row.status} -> ${newStatus}`);
     // Balance credit.
     if (newStatus === 'COMMITTED') {
       const txnRows = await queryDB(
@@ -1427,16 +1351,14 @@ app.post('/api/init-quotes', async (req, res) => {
       const txnType = VALID_TYPES.includes(type) ? type : 'P2P';
       const txnTypeObj = TRANSACTION_TYPE_MAP[txnType];
       // new
-      // exits.
       const payer = merchant[0];
-      // ðŸ”¹ Construct body in the given format
       const requestBody = {
         quoteId: quoteId,
         transactionId: transactionId,
         payer: {
           partyIdInfo: {
-            partyIdType: payer?.id_type, // this credential get from the database.
-            partyIdentifier: payer?.id_value, // this credential get from the database.
+            partyIdType: payer?.id_type,
+            partyIdentifier: payer?.id_value,
             fspId: process.env.fspId,
           },
           personalInfo: {
@@ -1462,7 +1384,6 @@ app.post('/api/init-quotes', async (req, res) => {
         transactionType: txnTypeObj,
         note: `${txnType} payment initialization.`,
       };
-      //  NEW >>  [SEND S1] — insert OUTGOING row
 
       await send_S1_createQuote({
         quote_id: quoteId,
@@ -1480,7 +1401,7 @@ app.post('/api/init-quotes', async (req, res) => {
         currency: process.env.currency,
         type: txnType,
       }).catch((e) => console.error('[SEND S1]', e.message));
-      // << END >>
+
       // Prepare Endpoint
       const url = `${process.env.QUOTE_SERVICE}/quotes`;
 
@@ -1528,7 +1449,6 @@ app.post('/api/init-transfer', async (req, res) => {
       quoteId,
     } = req.body;
 
-    // Validate required fields
     if (
       !currency ||
       !amount ||
@@ -1545,7 +1465,7 @@ app.post('/api/init-transfer', async (req, res) => {
       });
     }
 
-    // Generate IDs
+    // Generate ids
     const transferId = crypto.randomUUID();
     const transactionId = crypto.randomUUID();
 
@@ -1611,12 +1531,11 @@ app.post('/api/init-transfer', async (req, res) => {
       body: dfspData,
     };
 
-    // << NEW >>  [SEND S3] — link transfer_id, mark TRANSFER_SENT
+    // NEW => [SEND S3] — link transfer_id, mark TRANSFER_SENT
     await send_S3_transferSent({
       quote_id: quoteId,
       transfer_id: transferId,
     }).catch((e) => console.error('[SEND S3]', e.message));
-    // << END >>
 
     // Send response once
     res.status(200).json({
@@ -1635,12 +1554,10 @@ app.post('/api/init-transfer', async (req, res) => {
     });
   }
 });
-// ============================================================
+
 // CALLBACK HANDLERS (Parties, Quotes, Transfers)
-// ============================================================
 
 // Parties Phase
-
 // # single registration callback PUT method.
 app.put('/participants/:partyIdType/:partyIdentifier', async (req, res) => {
   const { partyIdType, partyIdentifier } = req.params;
@@ -1653,13 +1570,11 @@ app.put('/participants/:partyIdType/:partyIdentifier', async (req, res) => {
       headers: req.headers,
       body: req.body,
     };
-    // Save to your database
-    // ✅ Just return HTTP 200 - no JSON!
+    // Save database
     io.emit('alsRegisterOneCallback', callbackData);
     res.status(200).send();
   } catch (error) {
-    // Even on error, return 200 - but log the error
-    res.status(200).send(); // Still 200!
+    res.status(200).send();
   }
 });
 // For FSPIOP_CALLBACK_URL_PARTICIPANT_PUT_ERROR
@@ -1673,12 +1588,7 @@ app.put(
         headers: req.headers,
         body: req.body,
       };
-      // Save to your database
-      // ✅ Just return HTTP 200 - no JSON!
       io.emit('alsRegisterOneErrorCallback', callbackData);
-      // Notify internal systems about failure
-
-      // ✅ Return 200 OK for error callback acknowledgment
       res.status(200).send();
     } catch (error) {
       console.error('Error processing error callback:', error);
@@ -1687,7 +1597,6 @@ app.put(
   },
 );
 // # multiple registration callback PUT method.
-
 app.put('/participants/:requestId', async (req, res) => {
   try {
     const callbackData = {
@@ -1698,7 +1607,6 @@ app.put('/participants/:requestId', async (req, res) => {
     };
     // Process all participants
     io.emit('alsRegisterManyCallback', callbackData);
-    // ✅ Just return HTTP 200 - no JSON!
     res.status(200).send();
   } catch (error) {
     // Even if some fail, return 200
@@ -1716,20 +1624,12 @@ app.put('/participants/:requestId/error', async (req, res) => {
     };
     // Process all participants
     io.emit('alsRegisterManyErrorCallback', callbackData);
-    // Handle batch registration failure
-
-    // Notify administrators
-
     res.status(200).send();
   } catch (error) {
     console.error('Error processing batch error callback:', error);
     res.status(200).send();
   }
 });
-
-// helper function
-
-// init request
 
 // ALS
 app.put('/participants/:party_id/:party_identifire', async (req, res) => {});
@@ -1751,7 +1651,6 @@ app.get('/parties/:partyIdType/:partyIdentifier', async (req, res) => {
 
     await processPartyLookup(partyIdType, partyIdentifier, req.headers);
   } catch (error) {
-    console.error('Error in /parties route:', error);
     res.status(202).send();
   }
 });
@@ -1766,7 +1665,6 @@ async function processPartyLookup(partyIdType, partyIdentifier, headers) {
 
     if (merchant?.length > 0) {
       if (merchant[0]?.status === '1') {
-        // active merchant found
         responseBody = {
           party: {
             partyIdInfo: {
@@ -1787,7 +1685,6 @@ async function processPartyLookup(partyIdType, partyIdentifier, headers) {
 
         callbackUrl = `${process.env.ALS_SERVICE}/parties/${partyIdType}/${partyIdentifier}`;
       } else {
-        // merchant inactive
         responseBody = {
           errorInformation: {
             errorCode: '3200',
@@ -1798,7 +1695,6 @@ async function processPartyLookup(partyIdType, partyIdentifier, headers) {
         callbackUrl = `${process.env.ALS_SERVICE}/parties/${partyIdType}/${partyIdentifier}/error`;
       }
     } else {
-      // Merchant not found
       responseBody = {
         errorInformation: {
           errorCode: '3300',
@@ -1811,7 +1707,6 @@ async function processPartyLookup(partyIdType, partyIdentifier, headers) {
 
     await sendCallbackToHub(callbackUrl, responseBody, headers);
   } catch (error) {
-    console.error('Error processing party lookup:', error);
     const errorResponse = {
       errorInformation: {
         errorCode: '5000',
@@ -1849,9 +1744,8 @@ app.put('/parties/:partyIdType/:partyIdentifier/error', (req, res) => {
 });
 
 // Quotes Phase
-
 async function generateDynamicILPData(ilpData) {
-  // Create a dynamic expiration time (1 hour later)
+  // expiration
   const expirationTime = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
   // Generate a random ILP packet (base64 encoded JSON)
@@ -1881,11 +1775,10 @@ app.post('/quotes', async (req, res) => {
     };
     io.emit('postQuoteCallback', callbackData);
     res.status(202).send();
-    //  NEW >>  [RECEIVE R1] — insert INCOMING row
+    //  NEW =>  [RECEIVE R1] — insert INCOMING row
     await recv_R1_createQuote(body, req.headers).catch((e) =>
       console.error('[RECV R1]', e.message),
     );
-    // << END >>
 
     // after that send response to Hub.
     try {
@@ -1893,6 +1786,7 @@ app.post('/quotes', async (req, res) => {
       const expirationTime = new Date(
         Date.now() + 60 * 60 * 1000,
       ).toISOString();
+
       const ilpData = {
         amount: body?.amount?.amount,
         currency: body?.amount?.currency,
@@ -1900,10 +1794,11 @@ app.post('/quotes', async (req, res) => {
         payer: { id: body?.payer?.partyIdInfo?.partyIdentifier },
         expiration: expirationTime,
       };
+
       const dynamicILPData = await generateDynamicILPData(ilpData);
       const fee_value = (Number(body?.amount?.amount) / 100) * fee;
       const receive_amount = Number(body?.amount?.amount) - fee_value;
-      const url = `https://quoting.mojaloop.xyz/quotes/${body?.quoteId}`;
+      const url = `${process.env.QUOTE_SERVICE}/quotes/${body?.quoteId}`;
       const headers = {
         'Content-Type':
           'application/vnd.interoperability.quotes+json;version=1.1',
@@ -1933,7 +1828,7 @@ app.post('/quotes', async (req, res) => {
       };
 
       const response = await axios.put(url, payload, { headers });
-      // << NEW >>  [RECEIVE R2] — ILP accepted and sent to Hub
+      //  NEW -> [RECEIVE R2] — ILP accepted and sent to Hub
       await recv_R2_ilpSentToHub({
         quote_id: body?.quoteId,
         ilp_packet: dynamicILPData.ilpPacket || null,
@@ -1942,7 +1837,7 @@ app.post('/quotes', async (req, res) => {
         receive_amount,
         fee: fee_value,
       }).catch((e) => console.error('[RECV R2]', e.message));
-      // << END >>
+
       res.json({
         success: true,
         message: 'Mojaloop quote PUT successful!',
@@ -1952,7 +1847,7 @@ app.post('/quotes', async (req, res) => {
       console.log('e');
     }
   } catch (error) {
-    console.error('💥 Error:', error);
+    // console.error(' Error:', error);
     res.status(202).send();
   }
 });
@@ -1967,7 +1862,7 @@ app.put('/quotes/:id', async (req, res) => {
     body: req.body,
   });
   res.status(200).json({ message: 'Callback received' });
-  // NEW >>  [SEND S2] — store ILP, advance to QUOTE_RECEIVED
+  // NEW =>  [SEND S2] — store ILP, advance to QUOTE_RECEIVED
   const fee =
     body?.payeeFspFee?.amount ??
     body?.extensionList?.extension?.find((e) => e.key === 'fees')?.value ??
@@ -1980,7 +1875,6 @@ app.put('/quotes/:id', async (req, res) => {
     condition_hash: body?.condition ?? null,
     expiration: body?.expiration ?? null,
   }).catch((e) => console.error('[SEND S2]', e.message));
-  // << END >>
 });
 
 app.put('/quotes/:id/error', async (req, res) => {
@@ -1991,7 +1885,7 @@ app.put('/quotes/:id/error', async (req, res) => {
     body: req.body,
   });
   res.status(200).json({ message: 'Callback received' });
-  // NEW [SEND] — mark OUTGOING row FAILED
+  // NEW [SEND] - mark OUTGOING row FAILED
   const errInfo = req.body?.errorInformation || {};
   await queryDB(
     `UPDATE transactions SET
@@ -2006,7 +1900,6 @@ app.put('/quotes/:id/error', async (req, res) => {
       req.params.id,
     ],
   ).catch((e) => console.error('[SEND quote/error]', e.message));
-  // << END >>
 });
 
 // Transfers Phase
@@ -2027,12 +1920,12 @@ app.post('/transfers', async (req, res) => {
     const transferId =
       incomingBody?.transferId || '4a4d99d4-0e07-437f-986a-a443d214449a';
     const completedTimestamp = new Date().toISOString();
-    // << NEW >>  [RECEIVE R3] — link transfer_id to INCOMING row
+    // NEW => [RECEIVE R3] — link transfer_id to INCOMING row
     await recv_R3_transferReceived(incomingBody, req.headers).catch((e) =>
       console.error('[RECV R3]', e.message),
     );
-    // << END >>
-    const url = `https://api.mojaloop.xyz/transfers/${transferId}`;
+
+    const url = `${process.env.ML_API_ADAPTER}/transfers/${transferId}`;
     const headers = {
       'Content-Type':
         'application/vnd.interoperability.transfers+json;version=1.0',
@@ -2043,27 +1936,26 @@ app.post('/transfers', async (req, res) => {
       'FSPIOP-URI': `/transfers/${transferId}`,
       Date: new Date().toUTCString(),
     };
+
     const body = {
       completedTimestamp: completedTimestamp,
       transferState: 'COMMITTED',
     };
     await axios.put(url, body, { headers });
 
-    //***  HERE  ***//
+    // HERE //
 
     // NEW  [RECEIVE R4] — Hub accepted our COMMITTED, close INCOMING row
     await recv_R4_finalStatus(transferId, 'COMMITTED').catch((e) =>
       console.error('[RECV R4]', e.message),
     );
-    // << END >>
+
     // Send response ONCE
     res.status(202).json({
       message: 'Callback received successfully',
     });
   } catch (error) {
-    console.error('Error in /transfers route:', error);
-    // Still send 202 even on error (Mojaloop requirement)
-    // << NEW >>  [RECEIVE R4] — our PUT to Hub failed, mark INCOMING FAILED
+    //  NEW ->  [RECEIVE R4] — our PUT to Hub failed, mark INCOMING FAILED
     const tid = req.body?.transferId;
     if (tid) {
       await recv_R4_finalStatus(tid, 'FAILED', {
@@ -2071,13 +1963,13 @@ app.post('/transfers', async (req, res) => {
         error_description: error.message,
       }).catch(() => {});
     }
-    // << END >>
     res.status(202).json({
       message: 'Callback received with errors',
       error: error.message,
     });
   }
 });
+
 app.post('/transfers/:id', async (req, res) => {
   try {
     const callbackData = {
@@ -2090,7 +1982,6 @@ app.post('/transfers/:id', async (req, res) => {
     res.status(202).send();
     await processTransferRequest(req.body, req.headers);
   } catch (error) {
-    console.error('Error in /transfers route:', error);
     res.status(202).send();
   }
 });
@@ -2133,7 +2024,7 @@ app.put('/transfers/:id', async (req, res) => {
     body: req.body,
   });
   res.status(200).json({ message: 'Callback received' });
-  // << NEW >>  [SEND S4] — close OUTGOING row, unique tracker skips if terminal
+  // NEW =>  [SEND S4] — close OUTGOING row, unique tracker skips if terminal
   const newStatus =
     body?.transferState === 'COMMITTED'
       ? 'COMMITTED'
@@ -2146,7 +2037,6 @@ app.put('/transfers/:id', async (req, res) => {
   await send_S4_finalStatus(transferId, newStatus, {
     fulfilment: body?.fulfilment ?? null,
   }).catch((e) => console.error('[SEND S4]', e.message));
-  // << END >>
 });
 
 app.put('/transfers/:id/error', (req, res) => {
@@ -2159,23 +2049,20 @@ app.put('/transfers/:id/error', (req, res) => {
     body: req.body,
   });
   res.status(200).json({ message: 'Callback received' });
-  // << NEW >>  [SEND S4] — close OUTGOING row as FAILED
+  //  NEW ->?  [SEND S4] — close OUTGOING row as FAILED
   const errInfo = body?.errorInformation || {};
   send_S4_finalStatus(transferId, 'FAILED', {
     error_code: errInfo.errorCode ?? null,
     error_description: errInfo.errorDescription ?? null,
   }).catch((e) => console.error('[SEND S4 error]', e.message));
-  // << END >>
-});
-// ALL Bulk
 
-// ==========================================
-// ALS CALLBACK HANDLERS (REQUIRED!)
-// ==========================================
+});
+
+// ALL Bulk
 
 app.post('/api/verify-bulk-parties', async (req, res) => {
   try {
-    const parties = req.body; // Array of {idType, identifier}
+    const parties = req.body;
 
     if (!parties) return res.status(401).json({ message: 'asdf' });
 
@@ -2237,9 +2124,7 @@ app.post('/api/verify-bulk-parties', async (req, res) => {
   }
 });
 
-// ==========================================
-// BULK QUOTES CALLBACK HANDLERS (REQUIRED!)
-// ==========================================
+// Bulk quote.
 
 // 1. Bulk Quote Success Callback
 app.put('/bulkQuotes/:bulkQuoteId', async (req, res) => {
@@ -2247,13 +2132,9 @@ app.put('/bulkQuotes/:bulkQuoteId', async (req, res) => {
     const { bulkQuoteId } = req.params;
     const bulkQuoteResponse = req.body;
 
-    console.log(`📥 Bulk quote callback received: ${bulkQuoteId}`);
-
     // Extract individual quote responses
     const individualQuoteResults =
       bulkQuoteResponse.individualQuoteResults || [];
-
-    console.log(`✅ Received ${individualQuoteResults.length} quote results`);
 
     // Emit to frontend via Socket.io
     const callbackData = {
@@ -2264,46 +2145,12 @@ app.put('/bulkQuotes/:bulkQuoteId', async (req, res) => {
 
     io.emit('putBulkQuoteCallback', callbackData);
 
-    // Save to database for tracking
-    /*  for (const quoteResult of individualQuoteResults) {
-      try {
-        // Update recipient status
-        const updateSql = `
-          UPDATE g2p_recipients 
-          SET 
-            status = 'QUOTED',
-            ilp_packet = ?,
-            condition = ?,
-            quoted_at = NOW()
-          WHERE quote_id = ?
-        `;
-
-        await queryDB(updateSql, [
-          quoteResult.ilpPacket,
-          quoteResult.condition,
-          quoteResult.quoteId
-        ]);
-
-      } catch (err) {
-        console.error(`Failed to update quote ${quoteResult.quoteId}:`, err);
-      }
-    }
-
-    // Update bulk disbursement status
-    const updateBulkSql = `
-      UPDATE g2p_disbursements 
-      SET status = 'QUOTED', quoted_at = NOW()
-      WHERE bulk_quote_id = ?
-    `;
-    await queryDB(updateBulkSql, [bulkQuoteId]);
-    */
-    // Send 200 OK to Hub
     res.status(200).json({
       message: 'Bulk quote callback received',
       bulkQuoteId,
     });
   } catch (error) {
-    console.error('❌ Error handling bulk quote callback:', error);
+    console.error('Error handling bulk quote callback:', error);
     res.status(200).json({ message: 'Callback received with error' });
   }
 });
@@ -2314,7 +2161,7 @@ app.put('/bulkQuotes/:bulkQuoteId/error', async (req, res) => {
     const { bulkQuoteId } = req.params;
     const errorInfo = req.body.errorInformation;
 
-    console.log(`❌ Bulk quote error: ${bulkQuoteId}`, errorInfo);
+    console.log(`Bulk quote error: ${bulkQuoteId}`, errorInfo);
 
     // Emit to frontend
     io.emit('putBulkQuoteCallbackError', {
@@ -2323,20 +2170,7 @@ app.put('/bulkQuotes/:bulkQuoteId/error', async (req, res) => {
       body: req.body,
     });
 
-    // Update database
-    /* const updateSql = `
-      UPDATE g2p_disbursements 
-      SET 
-        status = 'FAILED',
-        error_message = ?
-      WHERE bulk_quote_id = ?
-    `;
 
-    await queryDB(updateSql, [
-      errorInfo.errorDescription,
-      bulkQuoteId
-    ]);
-    */
     res.status(200).json({ message: 'Error callback received' });
   } catch (error) {
     console.error('Error handling bulk quote error:', error);
@@ -2344,22 +2178,15 @@ app.put('/bulkQuotes/:bulkQuoteId/error', async (req, res) => {
   }
 });
 
-// ==========================================
-// BULK TRANSFER CALLBACK HANDLERS
-// ==========================================
-
+// Bulk Transfer
 // 3. Bulk Transfer Success Callback
 app.put('/bulkTransfers/:bulkTransferId', async (req, res) => {
   try {
     const { bulkTransferId } = req.params;
     const bulkTransferResponse = req.body;
 
-    console.log(`📥 Bulk transfer callback: ${bulkTransferId}`);
-
     const individualTransferResults =
       bulkTransferResponse.individualTransferResults || [];
-
-    console.log(`✅ ${individualTransferResults.length} transfers completed`);
 
     // Emit to frontend
     io.emit('putBulkTransferCallback', {
@@ -2368,35 +2195,6 @@ app.put('/bulkTransfers/:bulkTransferId', async (req, res) => {
       body: req.body,
     });
 
-    // Update each transfer status
-    /*  for (const transferResult of individualTransferResults) {
-      try {
-        const updateSql = `
-          UPDATE g2p_recipients 
-          SET 
-            status = ?,
-            fulfilment = ?,
-            completed_at = NOW(),
-            error_code = ?,
-            error_description = ?
-          WHERE transfer_id = ?
-        `;
-
-        const status = transferResult.transferState === 'COMMITTED' ? 'COMPLETED' : 'FAILED';
-
-        await queryDB(updateSql, [
-          status,
-          transferResult.fulfilment || null,
-          transferResult.errorInformation?.errorCode || null,
-          transferResult.errorInformation?.errorDescription || null,
-          transferResult.transferId
-        ]);
-        
-      } catch (err) {
-        console.error(`Failed to update transfer ${transferResult.transferId}:`, err);
-      }
-    }
-*/
     // Update bulk disbursement
     const completedCount = individualTransferResults.filter(
       (r) => r.transferState === 'COMMITTED',
@@ -2404,19 +2202,6 @@ app.put('/bulkTransfers/:bulkTransferId', async (req, res) => {
 
     const allCompleted = completedCount === individualTransferResults.length;
 
-    /* const updateBulkSql = `
-      UPDATE g2p_disbursements 
-      SET 
-        status = ?,
-        completed_at = NOW()
-      WHERE bulk_transfer_id = ?
-    `;
-
-    await queryDB(updateBulkSql, [
-      allCompleted ? 'COMPLETED' : 'FAILED',
-      bulkTransferId
-    ]);
-    */
     res.status(200).json({
       message: 'Bulk transfer callback received',
       bulkTransferId,
@@ -2424,7 +2209,6 @@ app.put('/bulkTransfers/:bulkTransferId', async (req, res) => {
       total: individualTransferResults.length,
     });
   } catch (error) {
-    console.error('❌ Error handling bulk transfer callback:', error);
     res.status(200).json({ message: 'Callback received with error' });
   }
 });
@@ -2435,8 +2219,6 @@ app.put('/bulkTransfers/:bulkTransferId/error', async (req, res) => {
     const { bulkTransferId } = req.params;
     const errorInfo = req.body.errorInformation;
 
-    console.log(`❌ Bulk transfer error: ${bulkTransferId}`, errorInfo);
-
     // Emit to frontend
     io.emit('putBulkTransferCallbackError', {
       params: req.params,
@@ -2444,33 +2226,14 @@ app.put('/bulkTransfers/:bulkTransferId/error', async (req, res) => {
       body: req.body,
     });
 
-    // Update database
-    /* const updateSql = `
-      UPDATE g2p_disbursements 
-      SET 
-        status = 'FAILED',
-        error_message = ?
-      WHERE bulk_transfer_id = ?
-    `;
-
-    await queryDB(updateSql, [
-      errorInfo.errorDescription,
-      bulkTransferId
-    ]);
-    */
     res.status(200).json({ message: 'Error callback received' });
   } catch (error) {
-    console.error('Error handling bulk transfer error:', error);
     res.status(200).json({ message: 'Error callback received' });
   }
 });
 
-// ==========================================
-// UPDATED: Bulk Quote Initialization (with callback saving)
-// ==========================================
 
 // Real function.
-
 app.post('/api/init-bulk-quotes', async (req, res) => {
   try {
     const { payer_id, recipients, amount_per_recipient, disbursement_type } =
@@ -2554,7 +2317,7 @@ app.post('/api/init-bulk-quotes', async (req, res) => {
     };
 
     // Send to Mojaloop Bulk API
-    const url = `${'https://quoting.mojaloop.xyz'}/bulkQuotes`;
+    const url = `${process.env.QUOTE_SERVICE}/bulkQuotes`;
 
     const options = {
       method: 'POST',
@@ -2571,12 +2334,9 @@ app.post('/api/init-bulk-quotes', async (req, res) => {
       body: JSON.stringify(requestBody),
     };
 
-    // Forward request
     await forwardRequestCore(res, url, options);
 
-    // Note: Response will come via PUT /bulkQuotes/:bulkQuoteId callback!
   } catch (error) {
-    console.error('initiating bulk quotes:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -2601,7 +2361,6 @@ app.post('/bulkQuotes', async (req, res) => {
     // Send 202 Accepted immediately
     res.status(202).send();
 
-    // ✅ Process EACH individual quote (UNCOMMENTED)
     const individualQuoteResults = [];
     const exp = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     for (const quote of individualQuotes) {
@@ -2627,7 +2386,6 @@ app.post('/bulkQuotes', async (req, res) => {
 
         const dynamicILPData = await generateDynamicILPData(ilpData);
 
-        // ✅ Build individual quote result
         individualQuoteResults.push({
           quoteId: quote.quoteId,
           transferAmount: {
@@ -2647,13 +2405,8 @@ app.post('/bulkQuotes', async (req, res) => {
           expiration: dynamicILPData.expiration,
         });
 
-        console.log(
-          `✅ Processed quote ${quote.quoteId}: receive ${receive_amount}, fee ${fee_value}`,
-        );
       } catch (error) {
-        console.error(`❌ Error processing quote ${quote.quoteId}:`, error);
 
-        // Add error response for this quote
         individualQuoteResults.push({
           quoteId: quote.quoteId,
           errorInformation: {
@@ -2665,14 +2418,14 @@ app.post('/bulkQuotes', async (req, res) => {
     }
 
     // Send bulk quote response back to Hub
-    const url = `https://quoting.mojaloop.xyz/bulkQuotes/${bulkQuoteId}`;
+    const url = `${process.env.QUOTE_SERVICE}/bulkQuotes/${bulkQuoteId}`;
 
     const headers = {
       'Content-Type':
         'application/vnd.interoperability.bulkQuotes+json;version=1.0',
       Date: new Date().toUTCString(),
-      'FSPIOP-Source': process.env.fspId, // Payee FSP (BracBankDFSP)
-      'FSPIOP-Destination': payer.partyIdInfo.fspId, // Payer FSP
+      'FSPIOP-Source': process.env.fspId,
+      'FSPIOP-Destination': payer.partyIdInfo.fspId,
       'FSPIOP-HTTP-Method': 'PUT',
       'FSPIOP-URI': `/bulkQuotes/${bulkQuoteId}`,
     };
@@ -2682,34 +2435,21 @@ app.post('/bulkQuotes', async (req, res) => {
       expiration: expiration,
     };
 
-    console.log(`🚀 PAYEE: Sending bulk quote response to Hub`);
-    console.log(`   URL: ${url}`);
-    console.log(`   Results: ${individualQuoteResults.length}`);
-    console.log(`   Payload:`, JSON.stringify(payload, null, 2));
-
     const response = await axios.put(url, payload, { headers });
 
-    console.log(`✅ PAYEE: Bulk quote response sent successfully`);
-    console.log(`   Status: ${response.status}`);
   } catch (error) {
-    console.error('💥 PAYEE: Error handling bulk quote:', error);
-    console.error('   Error details:', error.response?.data || error.message);
     res.status(202).send();
   }
 });
 
 // Transfers phase
-// ==========================================
-// PAYER SIDE: Initialize Bulk Transfer
-// ==========================================
-
 app.post('/api/init-bulk-transfer', async (req, res) => {
   try {
     const {
       bulkQuoteId,
       payerFsp,
       payeeFsp,
-      individualTransfers, // Array from quote response
+      individualTransfers,
     } = req.body;
 
     // Validate
@@ -2729,17 +2469,12 @@ app.post('/api/init-bulk-transfer', async (req, res) => {
 
     // Generate Bulk Transfer ID
     const bulkTransferId = crypto.randomUUID();
-
-    console.log(`   Bulk Transfer ID: ${bulkTransferId}`);
-
-    // Build request body with REQUIRED extensionList
     const requestBody = {
       bulkTransferId: bulkTransferId,
       bulkQuoteId: bulkQuoteId,
       payerFsp: payerFsp,
       payeeFsp: payeeFsp,
       individualTransfers: individualTransfers.map((transfer, index) => {
-        // Build base transfer
         const baseTransfer = {
           transferId: transfer.transferId || crypto.randomUUID(),
           transferAmount: {
@@ -2753,12 +2488,9 @@ app.post('/api/init-bulk-transfer', async (req, res) => {
           condition: transfer.condition,
         };
 
-        // ✅ Add extensionList (REQUIRED by Mojaloop)
         if (transfer.extensionList) {
-          // User provided extension list
           baseTransfer.extensionList = transfer.extensionList;
         } else {
-          // ✅ Create default extension list
           baseTransfer.extensionList = {
             extension: [
               {
@@ -2774,15 +2506,6 @@ app.post('/api/init-bulk-transfer', async (req, res) => {
       expiration: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     };
 
-    // Headers
-    /*
-    const headers = {
-      "Accept": "application/vnd.interoperability.bulkTransfers+json;version=1.0",
-      "Content-Type": "application/vnd.interoperability.bulkTransfers+json;version=1.0",
-      "Date": new Date().toUTCString(),
-      "FSPIOP-Source": payerFsp,
-      "FSPIOP-Destination": payeeFsp
-    }; */
     const headers = {
       Accept: 'application/vnd.interoperability.bulkTransfers+json;version=1.0',
       'Content-Type':
@@ -2808,13 +2531,6 @@ app.post('/api/init-bulk-transfer', async (req, res) => {
       hubResponse: response.data,
     });
   } catch (error) {
-    console.error('❌ Error initiating bulk transfer:', error);
-
-    if (error.response) {
-      console.error('   Response status:', error.response.status);
-      console.error('   Response data:', error.response.data);
-    }
-
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -2832,12 +2548,11 @@ app.post('/bulkTransfers', async (req, res) => {
 
     const completedTimestamp = new Date().toISOString();
 
-    // ✅ fulfilment uncommented!
     const individualTransferResults = individualTransfers.map((t) => ({
       transferId: t.transferId,
       transferState: 'COMMITTED',
       completedTimestamp: completedTimestamp,
-      fulfilment: crypto.randomBytes(32).toString('base64url'), // ✅ UNCOMMENT!
+      fulfilment: crypto.randomBytes(32).toString('base64url'),
     }));
 
     const hubUrl = `https://bulk-api.mojaloop.xyz/bulkTransfers/${bulkTransferId}`;
@@ -2860,14 +2575,13 @@ app.post('/bulkTransfers', async (req, res) => {
       { headers },
     );
 
-    console.log(`✅ Bulk transfer sent: ${bulkTransferId}`);
   } catch (err) {
-    console.error('❌ Error:', err.message);
     if (err.response) {
       console.error('   Hub error:', err.response.data);
     }
   }
 });
+
 // Helper functions
 function validateILPPacket(ilpPacket, condition) {
   try {
@@ -2886,8 +2600,6 @@ function generateFulfilment(condition) {
   return crypto.randomBytes(32).toString('base64url');
 }
 
-// All Bulk
-// ===========================================================
 const PORT = process.env.PORT || 5002;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

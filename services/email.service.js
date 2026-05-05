@@ -2,26 +2,7 @@
 const nodemailer = require('nodemailer');
 
 //  EMAIL TRANSPORTER
-/*
-function createTransporter() {
-  const port = parseInt(process.env.SMTP_PORT || '465');
 
-  return nodemailer.createTransport({
-    host:   process.env.SMTP_HOST,
-    port:   port,
-    secure: port === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    family: 4,                        // ← IPv4 force (cPanel এ must)
-    tls:    { rejectUnauthorized: false }, // ← self-signed cert allow
-    connectionTimeout: 15000,
-    greetingTimeout:   10000,
-    socketTimeout:     15000,
-  });
-}
-*/
 function createTransporter() {
   const port = parseInt(process.env.SMTP_PORT || '587');
   const is465 = port === 465;
@@ -215,8 +196,8 @@ background-image: linear-gradient(120deg, #a1c4fd 0%, #c2e9fb 100%);
         </div>
 
         <div class="warning">
-          ⏱ This OTP is valid for <strong>10 minutes</strong> only.<br/>
-          🔐 Never share this code with anyone.<br/>
+          This OTP is valid for <strong>10 minutes</strong> only.<br/>
+          Never share this code with anyone.<br/>
           If you did not request this login, please ignore this email or contact support immediately.
         </div>
 
@@ -432,7 +413,6 @@ async function sendSettlementEmailsToAll({
   const emailResults = [];
 
   try {
-    // সব DFSP info DB থেকে নাও (email সহ)
     const [dfsps] = await pool.execute(
       `SELECT dfsp_id, name, currency, email FROM dfsps WHERE email IS NOT NULL AND email != ''`,
     );
@@ -446,7 +426,6 @@ async function sendSettlementEmailsToAll({
 
     for (const dfsp of dfsps) {
       try {
-        // এই DFSP এর transfer stats নাও
         const [[stats]] = await pool.execute(
           `
           SELECT
@@ -461,7 +440,6 @@ async function sendSettlementEmailsToAll({
           [dfsp.dfsp_id, dfsp.dfsp_id, dfsp.dfsp_id, dfsp.dfsp_id],
         );
 
-        // Position নাও
         const [[pos]] = await pool.execute(
           `
           SELECT current_position, net_debit_cap
