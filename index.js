@@ -1930,8 +1930,8 @@ app.post('/transfers', async (req, res) => {
       'Content-Type':
         'application/vnd.interoperability.transfers+json;version=1.0',
       Accept: 'application/vnd.interoperability.transfers+json;version=1.0',
-      'FSPIOP-Source': 'ABank',
-      'FSPIOP-Destination': 'BBank',
+      'FSPIOP-Source': process.env.FSP_ID || 'SELFFSPID',
+      'FSPIOP-Destination': process.env.FSP_DES || 'DESTFSPID',
       'FSPIOP-HTTP-Method': 'PUT',
       'FSPIOP-URI': `/transfers/${transferId}`,
       Date: new Date().toUTCString(),
@@ -2055,7 +2055,6 @@ app.put('/transfers/:id/error', (req, res) => {
     error_code: errInfo.errorCode ?? null,
     error_description: errInfo.errorDescription ?? null,
   }).catch((e) => console.error('[SEND S4 error]', e.message));
-
 });
 
 // ALL Bulk
@@ -2170,7 +2169,6 @@ app.put('/bulkQuotes/:bulkQuoteId/error', async (req, res) => {
       body: req.body,
     });
 
-
     res.status(200).json({ message: 'Error callback received' });
   } catch (error) {
     console.error('Error handling bulk quote error:', error);
@@ -2231,7 +2229,6 @@ app.put('/bulkTransfers/:bulkTransferId/error', async (req, res) => {
     res.status(200).json({ message: 'Error callback received' });
   }
 });
-
 
 // Real function.
 app.post('/api/init-bulk-quotes', async (req, res) => {
@@ -2325,8 +2322,8 @@ app.post('/api/init-bulk-quotes', async (req, res) => {
         'Content-Type':
           'application/vnd.interoperability.bulkQuotes+json;version=1.0',
         Accept: 'application/vnd.interoperability.bulkQuotes+json;version=1.0',
-        'FSPIOP-Source': process.env.fspId || 'ABank',
-        'FSPIOP-Destination': process.env.fspDes || 'BBank',
+        'FSPIOP-Source': process.env.fspId || 'SELFFSPID',
+        'FSPIOP-Destination': process.env.fspDes || 'DESTFSPID',
         'FSPIOP-HTTP-Method': 'POST',
         'FSPIOP-URI': '/bulkQuotes',
         Date: new Date().toUTCString(),
@@ -2335,7 +2332,6 @@ app.post('/api/init-bulk-quotes', async (req, res) => {
     };
 
     await forwardRequestCore(res, url, options);
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -2404,9 +2400,7 @@ app.post('/bulkQuotes', async (req, res) => {
           condition: dynamicILPData.condition,
           expiration: dynamicILPData.expiration,
         });
-
       } catch (error) {
-
         individualQuoteResults.push({
           quoteId: quote.quoteId,
           errorInformation: {
@@ -2436,7 +2430,6 @@ app.post('/bulkQuotes', async (req, res) => {
     };
 
     const response = await axios.put(url, payload, { headers });
-
   } catch (error) {
     res.status(202).send();
   }
@@ -2445,12 +2438,7 @@ app.post('/bulkQuotes', async (req, res) => {
 // Transfers phase
 app.post('/api/init-bulk-transfer', async (req, res) => {
   try {
-    const {
-      bulkQuoteId,
-      payerFsp,
-      payeeFsp,
-      individualTransfers,
-    } = req.body;
+    const { bulkQuoteId, payerFsp, payeeFsp, individualTransfers } = req.body;
 
     // Validate
     if (
@@ -2574,7 +2562,6 @@ app.post('/bulkTransfers', async (req, res) => {
       },
       { headers },
     );
-
   } catch (err) {
     if (err.response) {
       console.error('   Hub error:', err.response.data);
