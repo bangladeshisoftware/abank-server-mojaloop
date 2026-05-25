@@ -2503,7 +2503,7 @@ app.post('/api/init-bulk-transfer', async (req, res) => {
       Date: new Date().toUTCString(),
     };
 
-    const url = `${'https://bulk-api.mojaloop.xyz'}/bulkTransfers`;
+    const url = `${process.env.BULK_API_ADAPTER}/bulkTransfers`;
 
     // Send to Hub
     const response = await axios.post(url, requestBody, { headers });
@@ -2543,7 +2543,7 @@ app.post('/bulkTransfers', async (req, res) => {
       fulfilment: crypto.randomBytes(32).toString('base64url'),
     }));
 
-    const hubUrl = `https://bulk-api.mojaloop.xyz/bulkTransfers/${bulkTransferId}`;
+    const hubUrl = `${process.env.BULK_API_ADAPTER}/bulkTransfers/${bulkTransferId}`;
 
     const headers = {
       'Content-Type':
@@ -2569,7 +2569,7 @@ app.post('/bulkTransfers', async (req, res) => {
   }
 });
 
-// Helper functions
+// helper functions
 function validateILPPacket(ilpPacket, condition) {
   try {
     if (!ilpPacket || !condition) return false;
@@ -2587,6 +2587,7 @@ function generateFulfilment(condition) {
   return crypto.randomBytes(32).toString('base64url');
 }
 
+// app
 const PORT = process.env.PORT || 5002;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
