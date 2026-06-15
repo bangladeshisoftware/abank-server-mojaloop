@@ -1,4 +1,3 @@
-
 const nodemailer = require('nodemailer');
 
 //  EMAIL TRANSPORTER
@@ -33,8 +32,7 @@ async function sendEmail({ to, subject, html, text }) {
   const transporter = createTransporter();
 
   const mailOptions = {
-    from:
-       '"DFSP Portal" <admin@saskarentpay.xdomainhost.com>',
+    from: `"DFSP Portal" <${process.env.SMTP_FROM}>`,
     to,
     subject,
     html,
@@ -43,10 +41,8 @@ async function sendEmail({ to, subject, html, text }) {
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log(`[EMAIL] Sent to ${to} | MessageId: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (err) {
-    console.error(`[EMAIL] Failed to send to ${to}: ${err.message}`);
     throw err;
   }
 }
