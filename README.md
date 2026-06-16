@@ -1,4 +1,4 @@
-# A Bank — Mojaloop DFSP
+# A Bank - Mojaloop DFSP
 
 A production-grade **Digital Financial Service Provider (DFSP)** backend built on the [Mojaloop](https://mojaloop.io/) open-source real-time payment framework. A Bank acts as a participant FSP within a Mojaloop switch, handling merchant onboarding, party lookups, quote negotiation, and transfer execution — with full callback handling for both payer and payee flows.
 
@@ -602,4 +602,4 @@ A Bank follows defensive patterns throughout:
 
 ## License
 
-Private — Bangladeshi Software LTD. All rights reserved.
+Private - Bangladeshi Software LTD. All rights reserved.
