@@ -75,17 +75,17 @@ The system supports multiple payment rails: `P2P`, `INSTANT`, `BULK`, `NPSB`, `R
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js |
-| Framework | Express.js |
-| Real-time | Socket.IO |
-| Database | MySQL |
-| Auth | JWT (jsonwebtoken) + bcryptjs |
-| HTTP Client | Axios + native Fetch |
-| Email | Nodemailer (SMTP) |
-| Protocol | Mojaloop FSPIOP API v1.0 / v2.0 |
-| Crypto | Node.js `crypto` (SHA-256 ILP conditions) |
+| Layer       | Technology                                |
+| ----------- | ----------------------------------------- |
+| Runtime     | Node.js                                   |
+| Framework   | Express.js                                |
+| Real-time   | Socket.IO                                 |
+| Database    | MySQL                                     |
+| Auth        | JWT (jsonwebtoken) + bcryptjs             |
+| HTTP Client | Axios + native Fetch                      |
+| Email       | Nodemailer (SMTP)                         |
+| Protocol    | Mojaloop FSPIOP API v1.0 / v2.0           |
+| Crypto      | Node.js `crypto` (SHA-256 ILP conditions) |
 
 ---
 
@@ -140,7 +140,7 @@ currency=BDT             # Default currency
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/a-bank-dfsp.git
+git clone https://github.com/bangladeshisoftware/abank-server-mojaloop.git
 cd a-bank-dfsp
 
 # 2. Install dependencies
@@ -187,18 +187,22 @@ Payer DFSP (A Bank)          Mojaloop Hub              Payee DFSP
 **Purpose:** Resolve which FSP owns the payee's identifier (MSISDN, account number, etc.)
 
 **Payer-side trigger (Portal API):**
+
 ```
 GET /api/oracle-verify/:id_type/:id_value
 GET /api/verify-parties/:receiver_dfsp/:id/:number
 ```
 
 **A Bank acting as Payee DFSP (inbound):**
+
 ```
 GET /parties/:partyIdType/:partyIdentifier
 ```
+
 A Bank queries its `merchant` table. If the merchant is active, it sends a `PUT /parties` callback to the ALS with the merchant's full party info. If inactive or not found, it sends an error callback.
 
 **Callbacks received by A Bank (acting as Payer DFSP):**
+
 ```
 PUT /parties/:partyIdType/:partyIdentifier         → emits: alsputCallback
 PUT /parties/:partyIdType/:partyIdentifier/error   → emits: alsputErrorCallback
@@ -212,17 +216,22 @@ PUT /participants/:partyIdType/:partyIdentifier     → emits: alsOracleVerifyCa
 **Purpose:** Calculate fees, generate ILP packet + condition, and agree on transfer terms.
 
 **Payer-side trigger (Portal API):**
+
 ```
 POST /api/init-quotes
 Body: { payer_id, payee, amount, type }
 ```
+
 This creates a `QUOTE_REQUESTED` transaction record, then forwards a `POST /quotes` to the Mojaloop Quote Service.
 
 **A Bank acting as Payee DFSP (inbound):**
+
 ```
 POST /quotes
 ```
+
 A Bank:
+
 1. Records the incoming quote (`recv_R1_createQuote`)
 2. Calculates fee from `settings.quote_fee` (percentage)
 3. Generates ILP packet, SHA-256 condition, and fulfilment
@@ -230,6 +239,7 @@ A Bank:
 5. Calls `PUT /quotes/:id` on the Quote Service with the ILP data
 
 **Callbacks received by A Bank (acting as Payer DFSP):**
+
 ```
 PUT /quotes/:id        → emits: putQuoteCallback     → updates to QUOTE_RECEIVED
 PUT /quotes/:id/error  → emits: putQuoteCallbackError → updates to FAILED
@@ -242,27 +252,34 @@ PUT /quotes/:id/error  → emits: putQuoteCallbackError → updates to FAILED
 **Purpose:** Move funds through the Mojaloop Central Ledger and commit the transfer.
 
 **Payer-side trigger (Portal API):**
+
 ```
 POST /api/init-transfer
 Body: { currency, amount, ilpPacket, condition, payer_fsp, payee_fsp, quoteId }
 ```
+
 A Bank forwards `POST /transfers` to the ML API Adapter and records `TRANSFER_SENT`.
 
 **A Bank acting as Payee DFSP (inbound):**
+
 ```
 POST /transfers
 ```
+
 A Bank:
+
 1. Records the transfer (`recv_R3_transferReceived`)
 2. Retrieves the stored fulfilment from the database
 3. Calls `PUT /transfers/:id` on the ML API Adapter with `transferState: COMMITTED`
 4. Updates status to `COMMITTED` and **credits** the payee merchant's balance
 
 **Callbacks received by A Bank (acting as Payer DFSP):**
+
 ```
 PUT /transfers/:id        → emits: putTransferCallback      → updates to COMMITTED / ABORTED / EXPIRED
 PUT /transfers/:id/error  → emits: putTransferCallbackError → updates to FAILED
 ```
+
 On `COMMITTED`, the payer merchant's balance is **debited**.
 
 ---
@@ -271,12 +288,12 @@ On `COMMITTED`, the payer merchant's balance is **debited**.
 
 These functions track an outgoing transaction through its lifecycle:
 
-| Function | Trigger | DB Status |
-|---|---|---|
-| `send_S1_createQuote()` | `POST /api/init-quotes` | `QUOTE_REQUESTED` |
-| `send_S2_quoteReceived()` | `PUT /quotes/:id` callback | `QUOTE_RECEIVED` |
-| `send_S3_transferSent()` | `POST /api/init-transfer` | `TRANSFER_SENT` |
-| `send_S4_finalStatus()` | `PUT /transfers/:id` callback | `COMMITTED` / `FAILED` / `ABORTED` / `EXPIRED` |
+| Function                  | Trigger                       | DB Status                                      |
+| ------------------------- | ----------------------------- | ---------------------------------------------- |
+| `send_S1_createQuote()`   | `POST /api/init-quotes`       | `QUOTE_REQUESTED`                              |
+| `send_S2_quoteReceived()` | `PUT /quotes/:id` callback    | `QUOTE_RECEIVED`                               |
+| `send_S3_transferSent()`  | `POST /api/init-transfer`     | `TRANSFER_SENT`                                |
+| `send_S4_finalStatus()`   | `PUT /transfers/:id` callback | `COMMITTED` / `FAILED` / `ABORTED` / `EXPIRED` |
 
 On `COMMITTED` → triggers **DEBIT** on the payer's merchant wallet.
 
@@ -286,12 +303,12 @@ On `COMMITTED` → triggers **DEBIT** on the payer's merchant wallet.
 
 These functions track an incoming transaction:
 
-| Function | Trigger | DB Status |
-|---|---|---|
-| `recv_R1_createQuote()` | `POST /quotes` inbound | `QUOTE_REQUESTED` |
-| `recv_R2_ilpSentToHub()` | After ILP generated & PUT to Hub | `QUOTE_RECEIVED` |
-| `recv_R3_transferReceived()` | `POST /transfers` inbound | `TRANSFER_SENT` |
-| `recv_R4_finalStatus()` | After PUT COMMITTED to Hub | `COMMITTED` / `FAILED` |
+| Function                     | Trigger                          | DB Status              |
+| ---------------------------- | -------------------------------- | ---------------------- |
+| `recv_R1_createQuote()`      | `POST /quotes` inbound           | `QUOTE_REQUESTED`      |
+| `recv_R2_ilpSentToHub()`     | After ILP generated & PUT to Hub | `QUOTE_RECEIVED`       |
+| `recv_R3_transferReceived()` | `POST /transfers` inbound        | `TRANSFER_SENT`        |
+| `recv_R4_finalStatus()`      | After PUT COMMITTED to Hub       | `COMMITTED` / `FAILED` |
 
 On `COMMITTED` → triggers **CREDIT** on the payee's merchant wallet.
 
@@ -305,46 +322,47 @@ All portal routes require a valid JWT (`Authorization: Bearer <token>`).
 
 #### Merchant (Parties) Management
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/parties` | List merchants with search, filter, pagination |
-| `GET` | `/api/parties/:id` | Get single merchant with linked user |
-| `POST` | `/api/parties/add` | Register new merchant (ALS + DB + user + email) |
-| `PUT` | `/api/parties/add` | Update merchant details |
-| `PUT` | `/api/parties/:id` | Patch specific merchant fields |
-| `DELETE` | `/api/parties/:id` | Delete merchant + de-register from ALS |
-| `PUT` | `/api/merchant/update/status/:id` | Toggle merchant active/inactive |
-| `GET` | `/api/parties/active/merchant` | List active merchants with balance > 50 |
+| Method   | Endpoint                          | Description                                     |
+| -------- | --------------------------------- | ----------------------------------------------- |
+| `GET`    | `/api/parties`                    | List merchants with search, filter, pagination  |
+| `GET`    | `/api/parties/:id`                | Get single merchant with linked user            |
+| `POST`   | `/api/parties/add`                | Register new merchant (ALS + DB + user + email) |
+| `PUT`    | `/api/parties/add`                | Update merchant details                         |
+| `PUT`    | `/api/parties/:id`                | Patch specific merchant fields                  |
+| `DELETE` | `/api/parties/:id`                | Delete merchant + de-register from ALS          |
+| `PUT`    | `/api/merchant/update/status/:id` | Toggle merchant active/inactive                 |
+| `GET`    | `/api/parties/active/merchant`    | List active merchants with balance > 50         |
 
 **Query params for `GET /api/parties`:**
 
-| Param | Type | Description |
-|---|---|---|
-| `search` | string | Searches name, ID value, NID, account no |
-| `status` | string | `1` = active, `0` = inactive |
-| `id_type` | string | e.g. `MSISDN`, `ACCOUNT_ID` |
-| `date_from` | date | Filter by created date (YYYY-MM-DD) |
-| `date_to` | date | Filter by created date (YYYY-MM-DD) |
-| `page` | number | Page number (default: 1) |
-| `per_page` | number | Results per page (default: 10, max: 100) |
+| Param       | Type   | Description                              |
+| ----------- | ------ | ---------------------------------------- |
+| `search`    | string | Searches name, ID value, NID, account no |
+| `status`    | string | `1` = active, `0` = inactive             |
+| `id_type`   | string | e.g. `MSISDN`, `ACCOUNT_ID`              |
+| `date_from` | date   | Filter by created date (YYYY-MM-DD)      |
+| `date_to`   | date   | Filter by created date (YYYY-MM-DD)      |
+| `page`      | number | Page number (default: 1)                 |
+| `per_page`  | number | Results per page (default: 10, max: 100) |
 
 #### Settings
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/settings` | Get system settings (e.g. `quote_fee`) |
-| `POST` | `/api/settings` | Update `quote_fee` percentage |
+| Method | Endpoint        | Description                            |
+| ------ | --------------- | -------------------------------------- |
+| `GET`  | `/api/settings` | Get system settings (e.g. `quote_fee`) |
+| `POST` | `/api/settings` | Update `quote_fee` percentage          |
 
 #### Payment Initiation
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/oracle-verify/:id_type/:id_value` | Check if an ID is registered in ALS |
-| `GET` | `/api/verify-parties/:receiver_dfsp/:id/:number` | Look up a payee party via ALS |
-| `POST` | `/api/init-quotes` | Initiate a quote (payer flow) |
-| `POST` | `/api/init-transfer` | Execute a transfer (payer flow) |
+| Method | Endpoint                                         | Description                         |
+| ------ | ------------------------------------------------ | ----------------------------------- |
+| `GET`  | `/api/oracle-verify/:id_type/:id_value`          | Check if an ID is registered in ALS |
+| `GET`  | `/api/verify-parties/:receiver_dfsp/:id/:number` | Look up a payee party via ALS       |
+| `POST` | `/api/init-quotes`                               | Initiate a quote (payer flow)       |
+| `POST` | `/api/init-transfer`                             | Execute a transfer (payer flow)     |
 
 **`POST /api/init-quotes` body:**
+
 ```json
 {
   "payer_id": "merchant-uuid",
@@ -363,6 +381,7 @@ All portal routes require a valid JWT (`Authorization: Bearer <token>`).
 ```
 
 **`POST /api/init-transfer` body:**
+
 ```json
 {
   "currency": "BDT",
@@ -383,36 +402,36 @@ These are called by the Mojaloop Hub. They respond `202` immediately and process
 
 #### Participants
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `PUT` | `/participants/:partyIdType/:partyIdentifier` | ALS oracle verify or batch register callback |
-| `PUT` | `/participants/:partyIdType/:partyIdentifier/error` | ALS error callback |
-| `PUT` | `/participants/:requestId` | Batch register callback |
-| `PUT` | `/participants/:requestId/error` | Batch register error callback |
+| Method | Endpoint                                            | Description                                  |
+| ------ | --------------------------------------------------- | -------------------------------------------- |
+| `PUT`  | `/participants/:partyIdType/:partyIdentifier`       | ALS oracle verify or batch register callback |
+| `PUT`  | `/participants/:partyIdType/:partyIdentifier/error` | ALS error callback                           |
+| `PUT`  | `/participants/:requestId`                          | Batch register callback                      |
+| `PUT`  | `/participants/:requestId/error`                    | Batch register error callback                |
 
 #### Parties
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/parties/:partyIdType/:partyIdentifier` | Party lookup request (Payee DFSP) |
-| `PUT` | `/parties/:partyIdType/:partyIdentifier` | Party lookup response (Payer DFSP) |
-| `PUT` | `/parties/:partyIdType/:partyIdentifier/error` | Party lookup error |
+| Method | Endpoint                                       | Description                        |
+| ------ | ---------------------------------------------- | ---------------------------------- |
+| `GET`  | `/parties/:partyIdType/:partyIdentifier`       | Party lookup request (Payee DFSP)  |
+| `PUT`  | `/parties/:partyIdType/:partyIdentifier`       | Party lookup response (Payer DFSP) |
+| `PUT`  | `/parties/:partyIdType/:partyIdentifier/error` | Party lookup error                 |
 
 #### Quotes
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/quotes` | Quote request received (Payee DFSP) |
-| `PUT` | `/quotes/:id` | Quote response received (Payer DFSP) |
-| `PUT` | `/quotes/:id/error` | Quote error |
+| Method | Endpoint            | Description                          |
+| ------ | ------------------- | ------------------------------------ |
+| `POST` | `/quotes`           | Quote request received (Payee DFSP)  |
+| `PUT`  | `/quotes/:id`       | Quote response received (Payer DFSP) |
+| `PUT`  | `/quotes/:id/error` | Quote error                          |
 
 #### Transfers
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/transfers` | Transfer request received (Payee DFSP) |
-| `PUT` | `/transfers/:id` | Transfer result callback (Payer DFSP) |
-| `PUT` | `/transfers/:id/error` | Transfer error |
+| Method | Endpoint               | Description                            |
+| ------ | ---------------------- | -------------------------------------- |
+| `POST` | `/transfers`           | Transfer request received (Payee DFSP) |
+| `PUT`  | `/transfers/:id`       | Transfer result callback (Payer DFSP)  |
+| `PUT`  | `/transfers/:id/error` | Transfer error                         |
 
 ---
 
@@ -436,11 +455,11 @@ When deleting a merchant, A Bank de-registers the identifier from ALS before rem
 
 Balance changes are managed via `updateBalance()` from `balance.controller.js`.
 
-| Event | Direction | Trigger |
-|---|---|---|
-| Transfer committed (outgoing) | **DEBIT** | `send_S4_finalStatus` → `COMMITTED` |
+| Event                         | Direction  | Trigger                             |
+| ----------------------------- | ---------- | ----------------------------------- |
+| Transfer committed (outgoing) | **DEBIT**  | `send_S4_finalStatus` → `COMMITTED` |
 | Transfer committed (incoming) | **CREDIT** | `recv_R4_finalStatus` → `COMMITTED` |
-| Merchant opening deposit | **CREDIT** | `POST /api/parties/add` |
+| Merchant opening deposit      | **CREDIT** | `POST /api/parties/add`             |
 
 Each balance operation is linked to the `transaction_id` and `transfer_id` for full auditability.
 
@@ -484,25 +503,26 @@ SMTP_FROM=noreply@example.com
 
 A Bank emits real-time events via Socket.IO to connected frontend clients. All events carry `{ params, query, headers, body }`.
 
-| Event | Phase | Description |
-|---|---|---|
-| `alsOracleVerifyCallback` | Parties | ALS oracle verify success |
-| `alsOracleVerifyErrorCallback` | Parties | ALS oracle verify failure |
-| `alsRegisterOneCallback` | Parties | Single participant registered |
-| `alsRegisterOneErrorCallback` | Parties | Single participant error |
-| `alsRegisterManyCallback` | Parties | Batch participants registered |
-| `alsRegisterManyErrorCallback` | Parties | Batch participants error |
-| `alsverifyCallback` | Parties | Party lookup received |
-| `alsputCallback` | Parties | Party lookup response received |
-| `alsputErrorCallback` | Parties | Party lookup error received |
-| `postQuoteCallback` | Quotes | Quote request received |
-| `putQuoteCallback` | Quotes | Quote response received |
-| `putQuoteCallbackError` | Quotes | Quote error received |
-| `postTransferCallback` | Transfers | Transfer request received |
-| `putTransferCallback` | Transfers | Transfer result received |
-| `putTransferCallbackError` | Transfers | Transfer error received |
+| Event                          | Phase     | Description                    |
+| ------------------------------ | --------- | ------------------------------ |
+| `alsOracleVerifyCallback`      | Parties   | ALS oracle verify success      |
+| `alsOracleVerifyErrorCallback` | Parties   | ALS oracle verify failure      |
+| `alsRegisterOneCallback`       | Parties   | Single participant registered  |
+| `alsRegisterOneErrorCallback`  | Parties   | Single participant error       |
+| `alsRegisterManyCallback`      | Parties   | Batch participants registered  |
+| `alsRegisterManyErrorCallback` | Parties   | Batch participants error       |
+| `alsverifyCallback`            | Parties   | Party lookup received          |
+| `alsputCallback`               | Parties   | Party lookup response received |
+| `alsputErrorCallback`          | Parties   | Party lookup error received    |
+| `postQuoteCallback`            | Quotes    | Quote request received         |
+| `putQuoteCallback`             | Quotes    | Quote response received        |
+| `putQuoteCallbackError`        | Quotes    | Quote error received           |
+| `postTransferCallback`         | Transfers | Transfer request received      |
+| `putTransferCallback`          | Transfers | Transfer result received       |
+| `putTransferCallbackError`     | Transfers | Transfer error received        |
 
 **Client connection example:**
+
 ```js
 import { io } from 'socket.io-client';
 const socket = io('https://your-server-url.com');
@@ -516,44 +536,44 @@ socket.on('putTransferCallback', (data) => {
 
 ## Database Schema Overview
 
-| Table | Purpose |
-|---|---|
-| `merchant` | FSP participants — identity, limits, status |
-| `users` | Portal users linked to merchants |
-| `transactions` | Full audit trail of all payment flows |
-| `merchant_wallet` | Current balance per merchant |
-| `settings` | System config (e.g. `quote_fee`) |
+| Table             | Purpose                                     |
+| ----------------- | ------------------------------------------- |
+| `merchant`        | FSP participants — identity, limits, status |
+| `users`           | Portal users linked to merchants            |
+| `transactions`    | Full audit trail of all payment flows       |
+| `merchant_wallet` | Current balance per merchant                |
+| `settings`        | System config (e.g. `quote_fee`)            |
 
 **Key `transactions` columns:**
 
-| Column | Description |
-|---|---|
-| `quote_id` | Mojaloop quote UUID |
-| `transfer_id` | Mojaloop transfer UUID |
-| `transaction_id` | End-to-end transaction UUID |
-| `direction` | `INCOMING` or `OUTGOING` |
-| `type` | `P2P`, `INSTANT`, `BULK`, `NPSB`, `RTGS`, `BEFTN` |
-| `status` | Current state (see state machines above) |
-| `ilp_packet` | Base64 encoded ILP packet |
-| `condition_hash` | SHA-256 condition (base64url) |
-| `fulfilment` | Pre-image of condition (base64url) |
-| `fee` | Calculated fee amount |
-| `receive_amount` | Amount after fee deduction |
-| `error_code` | Mojaloop error code on failure |
-| `error_description` | Human-readable error on failure |
+| Column              | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| `quote_id`          | Mojaloop quote UUID                               |
+| `transfer_id`       | Mojaloop transfer UUID                            |
+| `transaction_id`    | End-to-end transaction UUID                       |
+| `direction`         | `INCOMING` or `OUTGOING`                          |
+| `type`              | `P2P`, `INSTANT`, `BULK`, `NPSB`, `RTGS`, `BEFTN` |
+| `status`            | Current state (see state machines above)          |
+| `ilp_packet`        | Base64 encoded ILP packet                         |
+| `condition_hash`    | SHA-256 condition (base64url)                     |
+| `fulfilment`        | Pre-image of condition (base64url)                |
+| `fee`               | Calculated fee amount                             |
+| `receive_amount`    | Amount after fee deduction                        |
+| `error_code`        | Mojaloop error code on failure                    |
+| `error_description` | Human-readable error on failure                   |
 
 ---
 
 ## Transaction Types
 
-| Type | Mojaloop Scenario | Initiator Type | Use Case |
-|---|---|---|---|
-| `P2P` | `TRANSFER` | `CONSUMER` | Person-to-person transfer |
-| `INSTANT` | `PAYMENT` | `BUSINESS` | Merchant payment / instant pay |
-| `BULK` | `TRANSFER` | `CONSUMER` | Bulk disbursement |
-| `NPSB` | `PAYMENT` | `CONSUMER` | National Payment Switch Bangladesh |
-| `RTGS` | `TRANSFER` | `CONSUMER` | Real-Time Gross Settlement |
-| `BEFTN` | `TRANSFER` | `CONSUMER` | Bangladesh Electronic Funds Transfer Network |
+| Type      | Mojaloop Scenario | Initiator Type | Use Case                                     |
+| --------- | ----------------- | -------------- | -------------------------------------------- |
+| `P2P`     | `TRANSFER`        | `CONSUMER`     | Person-to-person transfer                    |
+| `INSTANT` | `PAYMENT`         | `BUSINESS`     | Merchant payment / instant pay               |
+| `BULK`    | `TRANSFER`        | `CONSUMER`     | Bulk disbursement                            |
+| `NPSB`    | `PAYMENT`         | `CONSUMER`     | National Payment Switch Bangladesh           |
+| `RTGS`    | `TRANSFER`        | `CONSUMER`     | Real-Time Gross Settlement                   |
+| `BEFTN`   | `TRANSFER`        | `CONSUMER`     | Bangladesh Electronic Funds Transfer Network |
 
 ---
 
