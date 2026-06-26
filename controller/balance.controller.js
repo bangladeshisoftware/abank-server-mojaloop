@@ -1,3 +1,10 @@
+/**************************************************************************
+ * Copyright © 2026 Bangladeshi Software Ltd. All rights reserved.
+ * Distributed under the license terms specified in this repository.
+ *
+ * ORIGINAL AUTHOR: Muhammad Nasim (Developer)
+ **************************************************************************/
+
 const { pool } = require('../config/db');
 
 exports.updateBalance = async ({
@@ -15,7 +22,7 @@ exports.updateBalance = async ({
   try {
     await conn.beginTransaction();
 
-    // ── 1. Ensure wallet row exists ───────────────────────────
+    // 1. Ensure wallet row exists
     await conn.execute(
       `INSERT INTO merchant_wallet
          (merchant_id, user_id, balance, total_credit, total_debit, total_fee, currency)
@@ -24,7 +31,7 @@ exports.updateBalance = async ({
       [merchant_id, user_id, currency],
     );
 
-    // ── 2. Lock wallet row & get current balance ──────────────
+    // 2. Lock wallet row & get current balance
     const [[wallet]] = await conn.execute(
       `SELECT balance FROM merchant_wallet
        WHERE merchant_id = ? FOR UPDATE`,
@@ -35,7 +42,7 @@ exports.updateBalance = async ({
     const amt = parseFloat(amount || 0);
     const feeAmt = parseFloat(fee || 0);
 
-    // ── 3. Calculate new balance ──────────────────────────────
+    // 3. Calculate new balance
     let balanceAfter;
     if (type === 'CREDIT') {
       balanceAfter = balanceBefore + amt;
@@ -44,7 +51,7 @@ exports.updateBalance = async ({
       balanceAfter = balanceBefore - amt - feeAmt;
     }
 
-    // ── 4. Update wallet ──────────────────────────────────────
+    // 4. Update wallet
     if (type === 'CREDIT') {
       await conn.execute(
         `UPDATE merchant_wallet
@@ -119,7 +126,7 @@ exports.updateBalanceByAdmin = async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    // ── 1. Ensure wallet row exists ───────────────────────────
+    // 1. Ensure wallet row exists
     await conn.execute(
       `INSERT INTO merchant_wallet
          (merchant_id, user_id, balance, total_credit, total_debit, total_fee, currency)
@@ -128,7 +135,7 @@ exports.updateBalanceByAdmin = async (req, res) => {
       [merchant_id, user_id, currency],
     );
 
-    // ── 2. Lock wallet row & get current balance ──────────────
+    // 2. Lock wallet row & get current balance
     const [[wallet]] = await conn.execute(
       `SELECT balance FROM merchant_wallet
        WHERE merchant_id = ? FOR UPDATE`,
@@ -139,7 +146,7 @@ exports.updateBalanceByAdmin = async (req, res) => {
     const amt = parseFloat(amount || 0);
     const feeAmt = parseFloat(fee || 0);
 
-    // ── 3. Calculate new balance ──────────────────────────────
+    // 3. Calculate new balance
     let balanceAfter;
     if (type === 'CREDIT') {
       balanceAfter = balanceBefore + amt;
@@ -148,7 +155,7 @@ exports.updateBalanceByAdmin = async (req, res) => {
       balanceAfter = balanceBefore - amt - feeAmt;
     }
 
-    // ── 4. Update wallet ──────────────────────────────────────
+    // 4. Update wallet
     if (type === 'CREDIT') {
       await conn.execute(
         `UPDATE merchant_wallet

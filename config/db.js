@@ -1,4 +1,10 @@
-// src/utils/db.js
+/**************************************************************************
+ * Copyright © 2026 Bangladeshi Software Ltd. All rights reserved.
+ * Distributed under the license terms specified in this repository.
+ *
+ * ORIGINAL AUTHOR: Muhammad Nasim (Developer)
+ **************************************************************************/
+
 const mysql = require('mysql2/promise');
 
 const pool = mysql.createPool({
@@ -8,7 +14,7 @@ const pool = mysql.createPool({
   database: process.env.DATABASE,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
 });
 
 // Optional: test connection on startup

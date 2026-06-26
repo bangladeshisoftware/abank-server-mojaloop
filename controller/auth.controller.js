@@ -1,3 +1,10 @@
+/**************************************************************************
+ * Copyright © 2026 Bangladeshi Software Ltd. All rights reserved.
+ * Distributed under the license terms specified in this repository.
+ *
+ * ORIGINAL AUTHOR: Muhammad Nasim (Developer)
+ **************************************************************************/
+
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
@@ -8,7 +15,7 @@ const { logActivity } = require('./activity.controller');
 const OTP_EXPIRY_MINUTES = 10;
 const SALT_ROUNDS = 12;
 
-// ── helpers ──────────────────────────────────────────────────
+// helpers
 function maskEmail(email) {
   if (!email) return null;
   const [local, domain] = email.split('@');
@@ -83,7 +90,7 @@ exports.login = async (req, res) => {
 
     // Dev mode — print OTP to console
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`🔑 [DEV] OTP for ${user.username}: ${otp}`);
+      console.log(`DEV OTP for ${user.username}: ${otp}`);
     }
     // send email.
     let emailSent = false;
@@ -98,19 +105,18 @@ exports.login = async (req, res) => {
         console.log(`[AUTH] OTP sent to ${user.email}`);
       } catch (emailErr) {
         return res.status(400).json({ message: emailErr });
-        console.error(`[AUTH] Email failed: ${emailErr.message}`);
+        console.error(`AUTH Email failed: ${emailErr.message}`);
         if (process.env.NODE_ENV !== 'production') {
-          console.log(`🔑 [DEV] OTP for ${user.username}: ${otp}`);
+          console.log(`DEV OTP for ${user.username}: ${otp}`);
         }
       }
     } else {
-      console.warn(`⚠️ [AUTH] No email for user ${user.username}`);
+      console.warn(`AUTH No email for user ${user.username}`);
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`🔑 [DEV] OTP for ${user.username}: ${otp}`);
+        console.log(`DEV OTP for ${user.username}: ${otp}`);
       }
     }
     // send email.
-    // TODO (production): send OTP via email / SMS using your mail service
 
     return res.json({
       emailSent,
@@ -289,7 +295,6 @@ exports.getMe = async (req, res) => {
   }
 };
 
-
 exports.updateMe = async (req, res) => {
   try {
     const { full_name, phone } = req.body;
@@ -305,7 +310,6 @@ exports.updateMe = async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 
 exports.changePassword = async (req, res) => {
   try {
@@ -390,9 +394,7 @@ exports.getUsers = async (req, res) => {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    // -----------------------
     // COUNT QUERY
-    // -----------------------
     const [countRows] = await pool.execute(
       `SELECT COUNT(*) AS total
        FROM users u
@@ -402,11 +404,6 @@ exports.getUsers = async (req, res) => {
 
     const total = countRows[0]?.total || 0;
 
-    // -----------------------
-    // DATA QUERY
-    // IMPORTANT FIX:
-    // LIMIT/OFFSET inlined
-    // -----------------------
     const [rows] = await pool.execute(
       `SELECT u.id,
               u.username,
@@ -628,27 +625,29 @@ exports.getProfile = async (req, res) => {
       const [[sum]] = await pool.execute(
         `SELECT COALESCE(SUM(balance), 0) AS total_balance,
                 COUNT(*) AS total_merchants
-         FROM merchant_wallet`
+         FROM merchant_wallet`,
       );
 
       const [[user]] = await pool.execute(
         `SELECT username, email, full_name FROM users WHERE id = ?`,
-        [id]
+        [id],
       );
 
       return res.json({
-        role:             'ADMIN',
-        username:         user?.username,
-        full_name:        user?.full_name,
-        email:            user?.email,
-        total_balance:    parseFloat(sum.total_balance   || 0),
-        total_merchants:  parseInt(sum.total_merchants   || 0),
-        currency:         'BDT',
+        role: 'ADMIN',
+        username: user?.username,
+        full_name: user?.full_name,
+        email: user?.email,
+        total_balance: parseFloat(sum.total_balance || 0),
+        total_merchants: parseInt(sum.total_merchants || 0),
+        currency: 'BDT',
       });
     }
 
     if (!merchant_id)
-      return res.status(400).json({ error: 'No merchant linked to this account' });
+      return res
+        .status(400)
+        .json({ error: 'No merchant linked to this account' });
 
     const [[row]] = await pool.execute(
       `SELECT w.balance, w.currency,
@@ -656,20 +655,19 @@ exports.getProfile = async (req, res) => {
        FROM merchant_wallet w
        JOIN merchant m ON m.id = w.merchant_id
        WHERE w.merchant_id = ?`,
-      [merchant_id]
+      [merchant_id],
     );
 
     return res.json({
-      role:         'MERCHANT',
+      role: 'MERCHANT',
       merchant_id,
       display_name: row?.display_name,
-      id_type:      row?.id_type,
-      id_value:     row?.id_value,
-      status:       row?.status,
-      balance:      parseFloat(row?.balance  || 0),
-      currency:     row?.currency || 'BDT',
+      id_type: row?.id_type,
+      id_value: row?.id_value,
+      status: row?.status,
+      balance: parseFloat(row?.balance || 0),
+      currency: row?.currency || 'BDT',
     });
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

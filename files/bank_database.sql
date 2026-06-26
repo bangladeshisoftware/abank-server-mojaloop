@@ -1,3 +1,10 @@
+/**************************************************************************
+ * Copyright © 2026 Bangladeshi Software Ltd. All rights reserved.
+ * Distributed under the license terms specified in this repository.
+ *
+ * ORIGINAL AUTHOR: Muhammad Nasim (Developer)
+ **************************************************************************/
+
 -- phpMyAdmin SQL Dump
 -- version 5.2.1
 -- https://www.phpmyadmin.net/

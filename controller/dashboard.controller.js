@@ -1,20 +1,15 @@
-// ================================================================
-//  DASHBOARD CONTROLLER
-//  File : src/controllers/dashboard.controller.js
-//
-//  GET /api/dashboard/summary
-//
-//  Uses: transactions table (direction: OUTGOING|INCOMING)
-//        merchants table
-//        users table
-// ================================================================
+/**************************************************************************
+ * Copyright © 2026 Bangladeshi Software Ltd. All rights reserved.
+ * Distributed under the license terms specified in this repository.
+ *
+ * ORIGINAL AUTHOR: Muhammad Nasim (Developer)
+ **************************************************************************/
 
 const { pool } = require('../config/db');
 
 exports.getSummary = async (req, res) => {
   try {
-
-    // ── 1. TODAY ─────────────────────────────────────────────
+    //  1. TODAY
     const [[today]] = await pool.execute(`
       SELECT
         COUNT(*)                                                        AS total,
@@ -48,7 +43,7 @@ exports.getSummary = async (req, res) => {
       WHERE DATE(created_at) = CURDATE()
     `);
 
-    // ── 2. YESTERDAY ─────────────────────────────────────────
+    // 2. YESTERDAY
     const [[yesterday]] = await pool.execute(`
       SELECT
         COUNT(*)                                                        AS total,
@@ -63,7 +58,7 @@ exports.getSummary = async (req, res) => {
       WHERE DATE(created_at) = CURDATE() - INTERVAL 1 DAY
     `);
 
-    // ── 3. THIS MONTH ─────────────────────────────────────────
+    // 3. THIS MONTH
     const [[this_month]] = await pool.execute(`
       SELECT
         COUNT(*)                                                        AS total,
@@ -80,7 +75,7 @@ exports.getSummary = async (req, res) => {
         AND YEAR(created_at)  = YEAR(CURDATE())
     `);
 
-    // ── 4. LAST 7 DAYS (for trend) ────────────────────────────
+    // 4. LAST 7 DAYS (for trend)
     const [last7days] = await pool.execute(`
       SELECT
         DATE(created_at)                                                AS date,
@@ -98,7 +93,7 @@ exports.getSummary = async (req, res) => {
       ORDER BY date ASC
     `);
 
-    // ── 5. HOURLY (last 24h) ──────────────────────────────────
+    // 5. HOURLY (last 24h)
     const [hourly] = await pool.execute(`
       SELECT
         HOUR(created_at)                                                AS hour,
@@ -114,7 +109,7 @@ exports.getSummary = async (req, res) => {
       ORDER BY hour ASC
     `);
 
-    // ── 6. TYPE BREAKDOWN (today) ─────────────────────────────
+    // 6. TYPE BREAKDOWN (today)
     const [type_breakdown] = await pool.execute(`
       SELECT
         type,
@@ -130,7 +125,7 @@ exports.getSummary = async (req, res) => {
       ORDER BY total DESC
     `);
 
-    // ── 7. STATUS DISTRIBUTION (today) ───────────────────────
+    // 7. STATUS DISTRIBUTION (today)
     const [status_dist] = await pool.execute(`
       SELECT
         status,
@@ -142,7 +137,7 @@ exports.getSummary = async (req, res) => {
       ORDER BY count DESC
     `);
 
-    // ── 8. RECENT TRANSACTIONS (last 10) ─────────────────────
+    // 8. RECENT TRANSACTIONS (last 10)
     const [recent] = await pool.execute(`
       SELECT
         t.id, t.transfer_id, t.quote_id,
@@ -157,7 +152,7 @@ exports.getSummary = async (req, res) => {
       LIMIT 10
     `);
 
-    // ── 9. MERCHANTS ──────────────────────────────────────────
+    // 9. MERCHANTS
     const [[merchants]] = await pool.execute(`
       SELECT
         COUNT(*)                              AS total,
@@ -167,7 +162,7 @@ exports.getSummary = async (req, res) => {
       FROM merchant
     `);
 
-    // ── 10. USERS ─────────────────────────────────────────────
+    // 10. USERS
     const [[users_summary]] = await pool.execute(`
       SELECT
         COUNT(*)                              AS total,
@@ -177,7 +172,7 @@ exports.getSummary = async (req, res) => {
       FROM users
     `);
 
-    // ── 11. TOP MERCHANTS by volume (this month) ──────────────
+    // 11. TOP MERCHANTS by volume (this month)
     const [top_merchants] = await pool.execute(`
       SELECT
         t.merchant_id,
@@ -197,55 +192,58 @@ exports.getSummary = async (req, res) => {
       LIMIT 5
     `);
 
-    // ── 12. TODAY vs YESTERDAY comparison ────────────────────
-    const todayVol     = parseFloat(today.committed_volume || 0);
-    const yestVol      = parseFloat(yesterday.committed_volume || 0);
-    const vol_change   = yestVol > 0 ? ((todayVol - yestVol) / yestVol * 100).toFixed(1) : null;
+    // 12. TODAY vs YESTERDAY comparison
+    const todayVol = parseFloat(today.committed_volume || 0);
+    const yestVol = parseFloat(yesterday.committed_volume || 0);
+    const vol_change =
+      yestVol > 0 ? (((todayVol - yestVol) / yestVol) * 100).toFixed(1) : null;
 
-    const todayCount   = parseInt(today.committed || 0);
-    const yestCount    = parseInt(yesterday.committed || 0);
-    const count_change = yestCount > 0 ? ((todayCount - yestCount) / yestCount * 100).toFixed(1) : null;
+    const todayCount = parseInt(today.committed || 0);
+    const yestCount = parseInt(yesterday.committed || 0);
+    const count_change =
+      yestCount > 0
+        ? (((todayCount - yestCount) / yestCount) * 100).toFixed(1)
+        : null;
 
-    // ── Response ──────────────────────────────────────────────
+
     return res.json({
       today: {
         ...today,
-        // ensure numbers
-        total:            parseInt(today.total || 0),
-        committed:        parseInt(today.committed || 0),
-        failed:           parseInt(today.failed || 0),
-        aborted:          parseInt(today.aborted || 0),
-        expired:          parseInt(today.expired || 0),
-        pending:          parseInt(today.pending || 0),
-        sent_amount:      parseFloat(today.sent_amount || 0),
-        sent_count:       parseInt(today.sent_count || 0),
-        received_amount:  parseFloat(today.received_amount || 0),
-        received_count:   parseInt(today.received_count || 0),
-        total_fee:        parseFloat(today.total_fee || 0),
+        total: parseInt(today.total || 0),
+        committed: parseInt(today.committed || 0),
+        failed: parseInt(today.failed || 0),
+        aborted: parseInt(today.aborted || 0),
+        expired: parseInt(today.expired || 0),
+        pending: parseInt(today.pending || 0),
+        sent_amount: parseFloat(today.sent_amount || 0),
+        sent_count: parseInt(today.sent_count || 0),
+        received_amount: parseFloat(today.received_amount || 0),
+        received_count: parseInt(today.received_count || 0),
+        total_fee: parseFloat(today.total_fee || 0),
         committed_volume: parseFloat(today.committed_volume || 0),
       },
       yesterday: {
-        total:            parseInt(yesterday.total || 0),
-        committed:        parseInt(yesterday.committed || 0),
-        failed:           parseInt(yesterday.failed || 0),
-        sent_amount:      parseFloat(yesterday.sent_amount || 0),
-        received_amount:  parseFloat(yesterday.received_amount || 0),
+        total: parseInt(yesterday.total || 0),
+        committed: parseInt(yesterday.committed || 0),
+        failed: parseInt(yesterday.failed || 0),
+        sent_amount: parseFloat(yesterday.sent_amount || 0),
+        received_amount: parseFloat(yesterday.received_amount || 0),
         committed_volume: parseFloat(yesterday.committed_volume || 0),
       },
       this_month: {
-        total:           parseInt(this_month.total || 0),
-        committed:       parseInt(this_month.committed || 0),
-        failed:          parseInt(this_month.failed || 0),
-        volume:          parseFloat(this_month.volume || 0),
-        sent_amount:     parseFloat(this_month.sent_amount || 0),
+        total: parseInt(this_month.total || 0),
+        committed: parseInt(this_month.committed || 0),
+        failed: parseInt(this_month.failed || 0),
+        volume: parseFloat(this_month.volume || 0),
+        sent_amount: parseFloat(this_month.sent_amount || 0),
         received_amount: parseFloat(this_month.received_amount || 0),
-        total_fee:       parseFloat(this_month.total_fee || 0),
+        total_fee: parseFloat(this_month.total_fee || 0),
       },
       comparison: {
-        vol_change_pct:   vol_change   ? parseFloat(vol_change)   : null,
+        vol_change_pct: vol_change ? parseFloat(vol_change) : null,
         count_change_pct: count_change ? parseFloat(count_change) : null,
-        vol_up:           vol_change   ? parseFloat(vol_change) >= 0   : null,
-        count_up:         count_change ? parseFloat(count_change) >= 0 : null,
+        vol_up: vol_change ? parseFloat(vol_change) >= 0 : null,
+        count_up: count_change ? parseFloat(count_change) >= 0 : null,
       },
       last7days,
       hourly,
@@ -253,22 +251,21 @@ exports.getSummary = async (req, res) => {
       status_dist,
       recent,
       merchants: {
-        total:     parseInt(merchants.total     || 0),
-        active:    parseInt(merchants.active    || 0),
-        inactive:  parseInt(merchants.inactive  || 0),
+        total: parseInt(merchants.total || 0),
+        active: parseInt(merchants.active || 0),
+        inactive: parseInt(merchants.inactive || 0),
         suspended: parseInt(merchants.suspended || 0),
       },
       users: {
-        total:     parseInt(users_summary.total     || 0),
-        active:    parseInt(users_summary.active    || 0),
-        admins:    parseInt(users_summary.admins    || 0),
+        total: parseInt(users_summary.total || 0),
+        active: parseInt(users_summary.active || 0),
+        admins: parseInt(users_summary.admins || 0),
         merchants: parseInt(users_summary.merchants || 0),
       },
       top_merchants,
     });
-
   } catch (err) {
-    console.error('[DASHBOARD] getSummary error:', err);
+    console.error('Dashboard getSummary error:', err);
     return res.status(500).json({ error: err.message });
   }
 };
